@@ -1,0 +1,11 @@
+name: Excessive Failed Login Attempts
+description: Eyni mənbə IP-dən qısa müddətdə çoxsaylı uğursuz giriş cəhdi
+mitre: T1110
+severity: 4
+cron: "*/15 * * * *"
+earliest: "-15m"
+search: |
+  index=* sourcetype="WinEventLog:Security" EventCode=4625
+  | rename Source_Network_Address as src_ip
+  | stats count as failed_attempts, dc(user) as targeted_users by src_ip
+  | where failed_attempts>5 AND NOT cidrmatch("127.0.0.0/8", src_ip)
