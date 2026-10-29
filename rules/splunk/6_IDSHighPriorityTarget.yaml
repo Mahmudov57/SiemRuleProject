@@ -1,0 +1,21 @@
+name: Multiple High-Priority IDS Alerts Against One Internal Host
+description: Bir daxili hosta qarşı qısa müddətdə təkrarlanan yüksək prioritetli Suricata alert-ləri (aktiv istismar cəhdi)
+mitre: "TA0001 / T1190"
+sigma_ref: "Network IDS / web exploitation kateqoriyası əsasında uyğunlaşdırılıb"
+severity: 5
+cron: "*/10 * * * *"
+earliest: "-30m"
+throttle_period: "2h"
+throttle_fields: "target"
+false_positives:
+  - Daxili vulnerability scanner (scan pəncərəsində)
+  - Test və pentest fəaliyyəti
+test: "curl -X DELETE http://<hədəf>:8000/ komandasını bir neçə dəfə təkrarla"
+search: |
+  index=network_security sourcetype=linux_messages_syslog suricata
+  | rex "suricata\[\d+\]:\s*\[\d+:(?<sid>\d+):\d+\]\s*(?<signature>.+?)\s*\[Classification:[^\]]*\]\s*\[Priority:\s*(?<priority>\d)\]\s*\{\w+\}\s*(?<ids_src>[\d\.]+):\d+\s*->\s*(?<ids_dest>[\d\.]+):(?<ids_dport>\d+)"
+  | where isnotnull(sid) AND tonumber(priority)<=2
+  | where NOT cidrmatch("10.0.0.0/8", ids_src)
+  | stats count as alerts, dc(signature) as sigs, values(signature) as signatures, values(ids_src) as attackers by ids_dest
+  | rename ids_dest as target
+  | where alerts>=3
