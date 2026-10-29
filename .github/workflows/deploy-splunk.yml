@@ -1,0 +1,22 @@
+name: Deploy SIEM Rules to Splunk
+
+on:
+  push:
+    paths:
+      - "rules/splunk/**"
+      - "scripts/deploy_splunk.py"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python scripts/deploy_splunk.py
+        env:
+          SPLUNK_HOST: ${{ secrets.SPLUNK_HOST }}
+          SPLUNK_TOKEN: ${{ secrets.SPLUNK_TOKEN }}
