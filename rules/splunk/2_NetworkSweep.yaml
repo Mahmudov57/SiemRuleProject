@@ -1,5 +1,5 @@
 name: Network Sweep Detected (Firewall Blocks)
-description: Bir mənbə IP eyni portu çoxlu fərqli hostlarda yoxlayır
+description: Bir mənbə IP eyni portu çoxlu fərqli hostlarda yoxlayır (NTP, DNS, DHCP istisna edilib)
 mitre: "TA0007 / T1018"
 severity: 4
 cron: "*/10 * * * *"
@@ -8,11 +8,11 @@ throttle_period: "1h"
 throttle_fields: "src_ip"
 false_positives:
   - Şəbəkə inventar və discovery alətləri
-  - DHCP/NTP kimi qanuni yayım trafiki
+  - NTP (123), DNS (53) və DHCP (67/68) kimi qanuni xidmət portları exclusion ilə çıxarılıb
 test: "nmap -p 445 10.10.20.0/24"
 search: |
   index=network_security sourcetype=linux_messages_syslog filterlog
   | rex "filterlog\[\d+\]:\s*(?<rule>\d+),[^,]*,[^,]*,(?<tracker>\d+),(?<iface>[^,]+),[^,]*,(?<action>[^,]+),(?<dir>[^,]+),4,(?:[^,]*,){7}(?<proto>[^,]+),(?<length>\d+),(?<src_ip>[\d\.]+),(?<dest_ip>[\d\.]+)(?:,(?<src_port>\d+),(?<dest_port>\d+))?"
-  | where action="block" AND isnotnull(dest_port) AND NOT cidrmatch("224.0.0.0/4", dest_ip) AND dest_ip!="255.255.255.255"
+  | where action="block" AND isnotnull(dest_port) AND NOT dest_port IN (123,53,67,68) AND NOT cidrmatch("224.0.0.0/4", dest_ip) AND dest_ip!="255.255.255.255"
   | stats dc(dest_ip) as targets, count by src_ip, dest_port
   | where targets>=15
