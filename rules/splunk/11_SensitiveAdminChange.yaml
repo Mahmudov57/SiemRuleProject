@@ -1,0 +1,20 @@
+name: Sensitive Firewall Administration Action via GUI
+description: Hesab, sertifikat, backup, əmr icrası və paket quraşdırma səhifələrinə POST sorğusu (hüquqların artırılması və persistence ehtimalı)
+mitre: "TA0003 / T1098"
+sigma_ref: "Network device configuration change / account manipulation ideyası əsasında uyğunlaşdırılıb"
+severity: 4
+cron: "*/15 * * * *"
+earliest: "-30m"
+throttle_period: "1h"
+throttle_fields: "client_ip,page"
+false_positives:
+  - Planlı admin işləri və bakım pəncərələri
+  - Konfiqurasiya backup avtomatlaşdırması
+test: "pfSense GUI-də System > User Manager səhifəsində istifadəçi əlavə et"
+search: |
+  index=network_security sourcetype=linux_messages_syslog nginx
+  | rex "nginx:\s*(?<client_ip>[\d\.]+)\s.*\"POST\s+/(?<page>[a-z_]+\.php)[^\"]*\"\s+(?<status>\d{3})"
+  | where isnotnull(page) AND status IN ("200","302")
+  | where match(page,"^(system_usermanager|system_authservers|system_certmanager|diag_command|diag_backup|diag_defaults|diag_edit|pkg_mgr_install|system_firmware)")
+  | stats count as actions, min(_time) as first_seen, max(_time) as last_seen by client_ip, page
+  | eval first_seen=strftime(first_seen,"%F %T"), last_seen=strftime(last_seen,"%F %T")
