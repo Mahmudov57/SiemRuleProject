@@ -1,0 +1,22 @@
+name: Single External Source Triggering Multiple IDS Signatures
+description: Eyni xarici IP üç və daha çox fərqli Suricata signature-i tetikləyir (çoxvektorlu kəşfiyyat və ya hücum)
+mitre: "TA0043 / T1595"
+sigma_ref: "Network IDS / reconnaissance kateqoriyası əsasında uyğunlaşdırılıb"
+severity: 4
+cron: "*/15 * * * *"
+earliest: "-1h"
+throttle_period: "2h"
+throttle_fields: "ext_ip"
+false_positives:
+  - Qanuni xarici monitorinq və scanner xidmətləri
+  - Protokol anomaliyası yaradan səhv konfiqurasiya olunmuş müştərilər
+test: "Xarici maşından hədəf web servisə nikto və ya curl ilə qeyri-standart sorğular"
+search: |
+  index=network_security sourcetype=linux_messages_syslog suricata
+  | rex "suricata\[\d+\]:\s*\[\d+:(?<sid>\d+):\d+\]\s*(?<signature>.+?)\s*\[Classification:[^\]]*\]\s*\[Priority:\s*(?<priority>\d)\]\s*\{\w+\}\s*(?<ids_src>[\d\.]+):\d+\s*->\s*(?<ids_dest>[\d\.]+):\d+"
+  | where isnotnull(sid)
+  | eval ext_ip=if(cidrmatch("10.0.0.0/8",ids_src), ids_dest, ids_src)
+  | where NOT cidrmatch("10.0.0.0/8", ext_ip)
+  | stats dc(signature) as sig_count, count as alerts, values(signature) as signatures, min(_time) as first_seen, max(_time) as last_seen by ext_ip
+  | where sig_count>=3
+  | eval first_seen=strftime(first_seen,"%F %T"), last_seen=strftime(last_seen,"%F %T")
