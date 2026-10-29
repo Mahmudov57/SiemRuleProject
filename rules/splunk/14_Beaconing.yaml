@@ -1,0 +1,24 @@
+name: Periodic Outbound Connection Attempts (Beaconing)
+description: Daxili host eyni xarici IP:portuna müntəzəm zaman intervalı ilə bloklanmış qoşulma cəhdləri göndərir (C2 beacon ehtimalı)
+mitre: "TA0011 / T1071"
+sigma_ref: "C2 beaconing / periodic connection ideyası əsasında uyğunlaşdırılıb"
+severity: 4
+cron: "*/30 * * * *"
+earliest: "-4h"
+throttle_period: "4h"
+throttle_fields: "src_ip,dest_ip"
+false_positives:
+  - Monitorinq agent-ləri və health-check-lər
+  - Lisenziya və yeniləmə yoxlamaları (NTP, DNS, DHCP exclusion ilə çıxarılıb)
+test: "Daxili hostdan hər 60 saniyədən bir xarici IP-yə curl göndərən döngü (while true; do curl <IP>; sleep 60; done)"
+search: |
+  index=network_security sourcetype=linux_messages_syslog filterlog
+  | rex "filterlog\[\d+\]:\s*(?<rule>\d+),[^,]*,[^,]*,(?<tracker>\d+),(?<iface>[^,]+),[^,]*,(?<action>[^,]+),(?<dir>[^,]+),4,(?:[^,]*,){7}(?<proto>[^,]+),(?<length>\d+),(?<src_ip>[\d\.]+),(?<dest_ip>[\d\.]+)(?:,(?<src_port>\d+),(?<dest_port>\d+))?"
+  | where action="block" AND isnotnull(dest_port) AND NOT dest_port IN (123,53,67,68)
+  | where cidrmatch("10.0.0.0/8",src_ip) AND NOT cidrmatch("10.0.0.0/8",dest_ip) AND NOT cidrmatch("224.0.0.0/4",dest_ip)
+  | sort 0 src_ip dest_ip dest_port _time
+  | streamstats current=f last(_time) as prev_time by src_ip dest_ip dest_port
+  | eval delta=_time-prev_time
+  | stats count, avg(delta) as avg_delta, stdev(delta) as sd_delta by src_ip, dest_ip, dest_port
+  | where count>=10 AND avg_delta>=30 AND (sd_delta/avg_delta)<0.2
+  | eval avg_delta=round(avg_delta,1), sd_delta=round(sd_delta,1)
