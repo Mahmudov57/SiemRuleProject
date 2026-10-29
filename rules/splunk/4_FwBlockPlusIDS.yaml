@@ -1,0 +1,24 @@
+name: External IP Blocked by Firewall and Flagged by IDS
+description: Eyni xarici IP həm firewall-da bloklanır, həm Suricata-da yüksək prioritetli alert yaradır (kəşfiyyatdan istismara keçid)
+mitre: "TA0043 / T1595, TA0001 / T1190"
+severity: 5
+cron: "*/10 * * * *"
+earliest: "-30m"
+throttle_period: "2h"
+throttle_fields: "ext_ip"
+false_positives:
+  - Daxili vulnerability scanner (xarici IP kimi görünsə)
+  - Qanuni xarici istifadəçinin tətbiqə uğursuz sorğuları
+test: "Xarici maşından nmap -p 1-100 <WAN_IP>, ardınca curl -X DELETE http://<WAN_IP>:8000/"
+search: |
+  index=network_security sourcetype=linux_messages_syslog (filterlog OR suricata)
+  | rex "filterlog\[\d+\]:\s*(?<rule>\d+),[^,]*,[^,]*,(?<tracker>\d+),(?<iface>[^,]+),[^,]*,(?<action>[^,]+),(?<dir>[^,]+),4,(?:[^,]*,){7}(?<proto>[^,]+),(?<length>\d+),(?<src_ip>[\d\.]+),(?<dest_ip>[\d\.]+)(?:,(?<src_port>\d+),(?<dest_port>\d+))?"
+  | rex "suricata\[\d+\]:\s*\[\d+:(?<sid>\d+):\d+\]\s*(?<signature>.+?)\s*\[Classification:[^\]]*\]\s*\[Priority:\s*(?<priority>\d)\]\s*\{\w+\}\s*(?<ids_src>[\d\.]+):\d+\s*->\s*(?<ids_dest>[\d\.]+):\d+"
+  | eval kind=case(isnotnull(sid),"ids", action="block","fw")
+  | where isnotnull(kind)
+  | eval ids_ext=if(cidrmatch("10.0.0.0/8",ids_src), ids_dest, ids_src)
+  | eval ext_ip=if(kind="ids", ids_ext, src_ip)
+  | where NOT (cidrmatch("10.0.0.0/8",ext_ip) OR cidrmatch("172.16.0.0/12",ext_ip) OR cidrmatch("192.168.0.0/16",ext_ip))
+  | stats count(eval(kind="fw")) as fw_blocks, count(eval(kind="ids" AND tonumber(priority)<=2)) as ids_high, values(signature) as signatures, min(_time) as first_seen, max(_time) as last_seen by ext_ip
+  | where fw_blocks>=5 AND ids_high>=1
+  | eval first_seen=strftime(first_seen,"%F %T"), last_seen=strftime(last_seen,"%F %T")
