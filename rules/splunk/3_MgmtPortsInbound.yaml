@@ -1,0 +1,19 @@
+name: External Access Attempts to Management Ports
+description: Xarici IP-dən SSH, Telnet, SMB, RDP və VNC portlarına bloklanmış təkrarlanan cəhdlər
+mitre: "TA0001 / T1133"
+severity: 5
+cron: "*/15 * * * *"
+earliest: "-30m"
+throttle_period: "2h"
+throttle_fields: "src_ip"
+false_positives:
+  - İnternet miqyaslı scanner-lər (Shodan, Censys)
+  - İcazəli uzaqdan idarəetmə
+test: "Xarici maşından nmap -p 22,23,445,3389,5900 <WAN_IP>"
+search: |
+  index=network_security sourcetype=linux_messages_syslog filterlog
+  | rex "filterlog\[\d+\]:\s*(?<rule>\d+),[^,]*,[^,]*,(?<tracker>\d+),(?<iface>[^,]+),[^,]*,(?<action>[^,]+),(?<dir>[^,]+),4,(?:[^,]*,){7}(?<proto>[^,]+),(?<length>\d+),(?<src_ip>[\d\.]+),(?<dest_ip>[\d\.]+)(?:,(?<src_port>\d+),(?<dest_port>\d+))?"
+  | where action="block" AND dest_port IN (22,23,445,3389,5900)
+  | where NOT (cidrmatch("10.0.0.0/8",src_ip) OR cidrmatch("172.16.0.0/12",src_ip) OR cidrmatch("192.168.0.0/16",src_ip))
+  | stats count, values(dest_port) as ports, dc(dest_ip) as targets by src_ip
+  | where count>=5
