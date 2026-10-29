@@ -1,0 +1,20 @@
+name: Web Scanner Behavior on Firewall GUI
+description: Bir IP-dən qısa müddətdə çoxlu fərqli URL və yüksək 4xx xəta nisbəti (directory/vulnerability scanner)
+mitre: "TA0043 / T1595.002"
+sigma_ref: "Web server / scanner user-agent və 404 spike kateqoriyası əsasında uyğunlaşdırılıb"
+severity: 3
+cron: "*/15 * * * *"
+earliest: "-30m"
+throttle_period: "1h"
+throttle_fields: "client_ip"
+false_positives:
+  - Əlçatanlıq monitorinqi və health-check sistemləri
+  - Səhifə yükləyən brauzerin çoxlu resurs sorğusu (exclusion: yalnız 4xx sayılır)
+test: "nikto -h http://<hədəf> və ya gobuster dir -u http://<hədəf>"
+search: |
+  index=network_security sourcetype=linux_messages_syslog nginx
+  | rex "nginx:\s*(?<client_ip>[\d\.]+)\s.*\"(?<method>[A-Z]+)\s+(?<uri>\S+)\s+HTTP/[\d\.]+\"\s+(?<status>\d{3})"
+  | where isnotnull(client_ip) AND isnotnull(status)
+  | stats count as requests, count(eval(tonumber(status)>=400 AND tonumber(status)<500)) as errors_4xx, dc(uri) as uris by client_ip
+  | eval error_ratio=round(errors_4xx/requests,2)
+  | where errors_4xx>=20 AND uris>=15 AND error_ratio>=0.5
