@@ -1,0 +1,21 @@
+name: Web Application Attack Signatures Detected
+description: Suricata-nın web hücumu kateqoriyalı signature-ləri (WEB_SERVER, SQL, XSS, traversal, CVE) xarici mənbədən
+mitre: "TA0001 / T1190"
+sigma_ref: "Web server / webshell və exploitation kateqoriyası əsasında uyğunlaşdırılıb"
+severity: 4
+cron: "*/10 * * * *"
+earliest: "-30m"
+throttle_period: "1h"
+throttle_fields: "ext_ip,signature"
+false_positives:
+  - Daxili tətbiq testləri
+  - Qanuni API client-lərin qeyri-standart HTTP metodları (DELETE, PUT)
+test: "curl -X DELETE http://<hədəf>:8000/ və ya curl 'http://<hədəf>/?id=1 UNION SELECT 1'"
+search: |
+  index=network_security sourcetype=linux_messages_syslog suricata
+  | rex "suricata\[\d+\]:\s*\[\d+:(?<sid>\d+):\d+\]\s*(?<signature>.+?)\s*\[Classification:[^\]]*\]\s*\[Priority:\s*(?<priority>\d)\]\s*\{\w+\}\s*(?<ids_src>[\d\.]+):\d+\s*->\s*(?<ids_dest>[\d\.]+):(?<ids_dport>\d+)"
+  | where isnotnull(sid) AND match(signature,"(?i)WEB_SERVER|SQL|XSS|TRAVERSAL|SHELLSHOCK|CVE-|WEBSHELL|PHP")
+  | eval ext_ip=ids_src
+  | where NOT cidrmatch("10.0.0.0/8", ext_ip)
+  | stats count as alerts, values(ids_dest) as targets, values(ids_dport) as ports, min(_time) as first_seen by ext_ip, signature
+  | eval first_seen=strftime(first_seen,"%F %T")
