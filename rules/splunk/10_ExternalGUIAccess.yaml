@@ -1,0 +1,20 @@
+name: Firewall Management GUI Accessed from External IP
+description: pfSense idarəetmə panelinə xarici (public) IP-dən uğurlu giriş sorğuları
+mitre: "TA0001 / T1133"
+sigma_ref: "Network device management interface exposure ideyası əsasında uyğunlaşdırılıb"
+severity: 5
+cron: "*/15 * * * *"
+earliest: "-30m"
+throttle_period: "4h"
+throttle_fields: "client_ip"
+false_positives:
+  - Admin-in uzaqdan, icazəli idarəetməsi (IP allowlist ilə exclusion əlavə edilməlidir)
+test: "Xarici şəbəkədən brauzerdə https://<WAN_IP>/ aç"
+search: |
+  index=network_security sourcetype=linux_messages_syslog nginx
+  | rex "nginx:\s*(?<client_ip>[\d\.]+)\s.*\"(?<method>[A-Z]+)\s+(?<uri>\S+)\s+HTTP/[\d\.]+\"\s+(?<status>\d{3})"
+  | where isnotnull(client_ip) AND status="200" AND match(uri,"\.php")
+  | where NOT (cidrmatch("10.0.0.0/8",client_ip) OR cidrmatch("172.16.0.0/12",client_ip) OR cidrmatch("192.168.0.0/16",client_ip))
+  | where NOT client_ip IN ("203.0.113.10")
+  | stats count as requests, dc(uri) as pages, values(uri) as sample_pages, min(_time) as first_seen, max(_time) as last_seen by client_ip
+  | eval first_seen=strftime(first_seen,"%F %T"), last_seen=strftime(last_seen,"%F %T")
