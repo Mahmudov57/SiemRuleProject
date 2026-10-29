@@ -1,0 +1,24 @@
+name: Firewall Configuration Change Followed by Filter Reload
+description: pfSense GUI-də firewall/NAT səhifələrinə POST sorğusu və ardınca 2 dəqiqə içində filter reload (qayda dəyişikliyi). Xarici IP-dən olarsa kritik.
+mitre: "TA0005 / T1562.004"
+severity: 4
+cron: "*/15 * * * *"
+earliest: "-30m"
+throttle_period: "1h"
+throttle_fields: "client_ip"
+false_positives:
+  - Planlı admin dəyişiklikləri (change window)
+  - Avtomatlaşdırılmış konfiqurasiya backup və sinxronizasiya
+test: "pfSense GUI-də firewall_nat.php səhifəsində qayda dəyişib Save/Apply et"
+search: |
+  index=network_security sourcetype=linux_messages_syslog (nginx OR check_reload_status)
+  | rex "nginx:\s*(?<client_ip>[\d\.]+)\s.*\"POST\s+/(?<page>firewall_[a-z_]+\.php|system_[a-z_]+\.php)[^\"]*\"\s+(?<status>\d{3})"
+  | rex "check_reload_status\[\d+\]:\s*(?<reload>Syncing firewall|Reloading filter)"
+  | eval kind=case(isnotnull(page),"change", isnotnull(reload),"reload")
+  | where isnotnull(kind)
+  | sort 0 _time
+  | streamstats time_window=120 count(eval(kind="reload")) as reloads_near
+  | where kind="change" AND status=200
+  | stats count as changes, values(page) as pages, max(reloads_near) as reloads, min(_time) as first_seen by client_ip
+  | eval external=if(cidrmatch("10.0.0.0/8",client_ip) OR cidrmatch("192.168.0.0/16",client_ip),"internal","external")
+  | eval first_seen=strftime(first_seen,"%F %T")
