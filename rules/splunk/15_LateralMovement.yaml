@@ -1,22 +1,20 @@
-name: Internal Lateral Movement Attempts on Admin Ports
-description: Daxili host başqa şəbəkə seqmentindəki hostlara SSH, RPC, SMB, RDP və WinRM portlarında bloklanmış cəhdlər göndərir
-mitre: "TA0008 / T1021"
-sigma_ref: "Lateral movement / remote services kateqoriyası əsasında uyğunlaşdırılıb"
-severity: 5
-cron: "*/10 * * * *"
+name: Web Scanner Behavior on Firewall GUI
+description: Bir IP-dən qısa müddətdə çoxlu fərqli URL və yüksək 4xx xəta nisbəti (directory/vulnerability scanner)
+mitre: "TA0043 / T1595.002"
+sigma_ref: "Web server / scanner user-agent və 404 spike kateqoriyası əsasında uyğunlaşdırılıb"
+severity: 3
+cron: "*/15 * * * *"
 earliest: "-30m"
-throttle_period: "2h"
-throttle_fields: "src_ip"
+throttle_period: "1h"
+throttle_fields: "client_ip"
 false_positives:
-  - İT idarəetmə serverləri və patch/inventory alətləri
-  - Planlı admin əlçatanlığı (allowlist ilə exclusion)
-test: "Bir VLAN-dakı hostdan digər VLAN-a nmap -p 22,135,445,3389,5985 <hədəf>"
+  - Əlçatanlıq monitorinqi və health-check sistemləri
+  - Səhifə yükləyən brauzerin çoxlu resurs sorğusu (yalnız 4xx xətalar sayılır)
+test: "nikto -h http://<hədəf> və ya gobuster dir -u http://<hədəf>"
 search: |
-  index=network_security sourcetype=linux_messages_syslog filterlog
-  | rex "filterlog\[\d+\]:\s*(?<rule>\d+),[^,]*,[^,]*,(?<tracker>\d+),(?<iface>[^,]+),[^,]*,(?<action>[^,]+),(?<dir>[^,]+),4,(?:[^,]*,){7}(?<proto>[^,]+),(?<length>\d+),(?<src_ip>[\d\.]+),(?<dest_ip>[\d\.]+)(?:,(?<src_port>\d+),(?<dest_port>\d+))?"
-  | where action="block" AND dest_port IN (22,135,445,3389,5985,5986)
-  | where cidrmatch("10.0.0.0/8",src_ip) AND cidrmatch("10.0.0.0/8",dest_ip)
-  | eval src_net=replace(src_ip,"\.\d+$",""), dest_net=replace(dest_ip,"\.\d+$","")
-  | where src_net!=dest_net
-  | stats count, dc(dest_ip) as targets, values(dest_port) as ports, values(dest_net) as dest_nets by src_ip
-  | where count>=3 AND targets>=2
+  index=network_security sourcetype=linux_messages_syslog nginx
+  | rex "nginx:\s*(?<client_ip>[\d\.]+)\s.*\"(?<method>[A-Z]+)\s+(?<uri>\S+)\s+HTTP/[\d\.]+\"\s+(?<status>\d{3})"
+  | where isnotnull(client_ip) AND isnotnull(status)
+  | stats count as requests, count(eval(tonumber(status)>=400 AND tonumber(status)<500)) as errors_4xx, dc(uri) as uris by client_ip
+  | eval error_ratio=round(errors_4xx/requests,2)
+  | where errors_4xx>=20 AND uris>=15 AND error_ratio>=0.5
