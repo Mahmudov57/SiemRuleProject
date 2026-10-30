@@ -1,7 +1,7 @@
 name: External Access Attempts to Management Ports
 description: Xarici IP-dən SSH, Telnet, SMB, RDP və VNC portlarına bloklanmış təkrarlanan cəhdlər
 mitre: "TA0001 / T1133"
-severity: 5
+severity: 4
 cron: "*/15 * * * *"
 earliest: "-30m"
 throttle_period: "2h"
