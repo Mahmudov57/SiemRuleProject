@@ -9,7 +9,7 @@ throttle_period: "1h"
 throttle_fields: "client_ip"
 false_positives:
   - Əlçatanlıq monitorinqi və health-check sistemləri
-  - Səhifə yükləyən brauzerin çoxlu resurs sorğusu (exclusion: yalnız 4xx sayılır)
+  - Səhifə yükləyən brauzerin çoxlu resurs sorğusu (yalnız 4xx xətalar sayılır)
 test: "nikto -h http://<hədəf> və ya gobuster dir -u http://<hədəf>"
 search: |
   index=network_security sourcetype=linux_messages_syslog nginx
