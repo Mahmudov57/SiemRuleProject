@@ -1,0 +1,18 @@
+name: Port Scan Detected (Firewall Denies)
+description: Bir mənbə IP-nin qısa müddətdə çoxlu fərqli portlara bloklanmış qoşulma cəhdi
+mitre: "TA0043 / T1046"
+severity: 6
+credibility: 7
+relevance: 7
+offense_index: sourceip
+false_positives:
+  - Vulnerability scanner və monitorinq sistemləri
+  - Səhv konfiqurasiya olunmuş tətbiq
+test: "nmap -p 1-100 <hədəf_IP>"
+aql: |
+  SELECT sourceip, UNIQUECOUNT(destinationport) AS ports, COUNT(*) AS events
+  FROM events
+  WHERE LOGSOURCETYPENAME(devicetype) ILIKE '%pfsense%' AND category = 'Firewall Deny'
+  GROUP BY sourceip
+  HAVING ports >= 20
+  LAST 15 MINUTES
